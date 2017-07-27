@@ -65,8 +65,8 @@
 
         (log/info "Assignment now" (.assignment consumer))
 
+        (log/info "Polling...")
         (loop []
-          (log/info "Polling...")
           (let [^ConsumerRecords consumer-records (.poll consumer (int 10000))
                 ; Only those records that occur before the end timestamp.
                 relevant-records (filter #(< (.timestamp %) end-timestamp) consumer-records)]
@@ -84,7 +84,6 @@
             ; Could be empty because we got to a position past the timestamp, so it's time to stop.
             ; Otherwise, a timeout because we're in the future. Also time to stop.
             (when-not (empty? relevant-records)
-              (log/info "Finished partition.")
               (recur)))))))
 
 (def connection
