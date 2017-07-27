@@ -4,6 +4,18 @@ Snapshots the Evidence Log into archive files.
 
 Runs daily. Ingests the entire Evidence Log Kafka topic and saves each day's worth into a snapshot in S3.
 
+Saves two snapshots per day, `YYYY-MM-DD.txt` and `YYYY-MM-DD.csv`. The .txt file contains lines of JSON. The CSV file contains the lines expressed as JSON with a header line. The field names (and columns) are:
+
+ - t : timestamp
+ - s : service
+ - c : component
+ - f : facet
+ - p : partition
+ - v : value
+ - e : extra values
+
+Note that the lines are split along the timestamp recorded by Kafka, which may be very slightly different to the timestamp recorded by the log. If you're interested in precise boundaries, fetch an extra day either side of the range in question.
+
 ## To run
 
 ### Schedule

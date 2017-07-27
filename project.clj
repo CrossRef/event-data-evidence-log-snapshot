@@ -14,7 +14,8 @@
                  [org.slf4j/slf4j-simple "1.7.21"]
                  [org.apache.kafka/kafka-clients "0.10.2.0"]
                  [slingshot "0.12.2"]
-                 [clojurewerkz/quartzite "2.0.0"]]
+                 [clojurewerkz/quartzite "2.0.0"]
+                 [org.clojure/data.csv "0.1.4"]]
 
   :main ^:skip-aot event-data-evidence-log-snapshot.core
   :target-path "target/%s")

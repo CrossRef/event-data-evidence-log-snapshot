@@ -10,7 +10,7 @@
             [clj-time.periodic :as clj-time-periodic]
             [robert.bruce :refer [try-try-again]]
             [clojure.java.io :refer [writer]]
-
+            [clojure.data.csv :as csv]
             [clojurewerkz.quartzite.triggers :as qt]
             [clojurewerkz.quartzite.jobs :as qj]
             [clojurewerkz.quartzite.schedule.daily-interval :as daily]
@@ -26,7 +26,8 @@
            [java.io File]))
 
 (defn retrieve-date-range
-  "Write all messages between the two dates into the output-stream, one message per line.
+  "Callback each message for all messages between the two date, one message per callback. Callback
+  is passed a ConsumerRecord.
   This will block until the end date if the date is in the future, so must only be called for dates
   in the past!
 
@@ -39,7 +40,7 @@
   It is able to deal with multiple partitions, but iterates one partition at a time. The output file
   would therefore be split into chunks which have correct internal ordering."
 
-  [start-date end-date output-stream]
+  [start-date end-date callback]
   (let [start-timestamp (clj-time-coerce/to-long start-date)
         end-timestamp (clj-time-coerce/to-long end-date)
 
@@ -83,13 +84,12 @@
             
             (doseq [record relevant-records]
               
+              (callback record)
+
               ; We typically see a couple of million events per days.
               (swap! count-this-session inc)
               (when (zero? (rem @count-this-session 10000))
-                (log/info "Written" @count-this-session "lines"))
-
-              (.write output-stream ^String (.value record))
-              (.write output-stream "\n"))
+                (log/info "Written" @count-this-session "lines")))
 
             ; Could be empty because we got to a position past the timestamp, so it's time to stop.
             ; Otherwise, a timeout because we're in the future. Also time to stop.
@@ -110,10 +110,17 @@
   "Catch up this many days when we run."
   10)
 
+(def csv-columns
+  "The ordered list of fields that are included in a CSV file."
+  [:t :s :c :f :p :v :e])
+
+(def csv-column-selector
+  "Map a log entry to a CSV line vector."
+  (apply juxt csv-columns))
+
 (defn ensure-day
   [day-date]
   (let [ymd-string (clj-time-format/unparse date-format day-date)
-        file (File/createTempFile ymd-string ".txt")
 
         start-date (clj-time/date-time (clj-time/year day-date)
                                        (clj-time/month day-date)
@@ -123,18 +130,50 @@
 
         client (:client @connection)
         bucket-name (:status-snapshot-s3-bucket-name env)
-        s3-file-path (str "log/" ymd-string ".txt")]
+        txt-s3-file-path (str "log/" ymd-string ".txt")
+        csv-s3-file-path (str "log/" ymd-string ".csv")]
 
-    (if (.doesObjectExist client bucket-name s3-file-path)
-      (log/info "Log file exists at " s3-file-path ", skipping.")
-      (do
-        (log/info "Saving log entries for" ymd-string "to temp file" file)
+    (if (.doesObjectExist client bucket-name txt-s3-file-path)
+      (log/info "Text log file exists at " txt-s3-file-path ", skipping.")
+      (let [file (File/createTempFile ymd-string ".txt")]
+        (log/info "Saving log entries for" ymd-string "to temp file")
 
         (with-open [w (writer file)]
-          (retrieve-date-range start-date end-date w))
+          (retrieve-date-range
+            start-date
+            end-date
+            (fn [record]
+              (.write w ^String (.value record))
+              (.write w "\n"))))
 
-          (log/info "Uploading to" s3-file-path)
-          (.putObject client bucket-name s3-file-path file)
+          (log/info "Uploading to" txt-s3-file-path)
+          (.putObject client bucket-name txt-s3-file-path file)
+          (log/info "Done uploading artifact.")
+
+          (.delete file)))
+
+    (if (.doesObjectExist client bucket-name csv-s3-file-path)
+      (log/info "CSV log file exists at " csv-s3-file-path ", skipping.")
+      (let [file (File/createTempFile ymd-string ".csv")]
+        (log/info "Saving log entries for" ymd-string "to temp file")
+
+        (with-open [w (writer file)]
+          ; Write header.
+          (csv/write-csv w [(map name csv-columns)])
+
+          (retrieve-date-range
+            start-date
+            end-date
+            (fn [record]
+              (let [value (.value record)]
+                (when-not (clojure.string/blank? value)
+                  (csv/write-csv
+                    w
+                    [(csv-column-selector
+                       (json/read-str ^String value :key-fn keyword))]))))))
+
+          (log/info "Uploading to" csv-s3-file-path)
+          (.putObject client bucket-name csv-s3-file-path file)
           (log/info "Done uploading artifact.")
 
           (.delete file)))))
