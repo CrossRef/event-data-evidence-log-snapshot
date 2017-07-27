@@ -75,7 +75,7 @@
               
               ; We typically see a couple of million events per days.
               (swap! count-this-session inc)
-              (when (rem @count-this-session 10000)
+              (when (zero? (rem @count-this-session 10000))
                 (log/info "Written" @count-this-session "lines"))
 
               (.write output-stream ^String (.value record))
