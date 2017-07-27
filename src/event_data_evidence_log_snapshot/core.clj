@@ -47,7 +47,9 @@
         ; List of org.apache.kafka.common.TopicPartition.
         topic-partitions (map #(TopicPartition. topic-name (.partition %)) partition-infos)
         ; Map of TopicPartition to OffsetAndTimestamp
-        start-offsets (.offsetsForTimes consumer (into {} (map #(vector % start-timestamp) topic-partitions)))]
+        start-offsets (.offsetsForTimes consumer (into {} (map #(vector % start-timestamp) topic-partitions)))
+
+        count-this-session (atom 0)]
 
       (log/info "Saving from" start-timestamp "to" end-timestamp "group" group-id "topic" topic-name)
       (log/info partition-infos)
@@ -69,10 +71,13 @@
                 ; Only those records that occur before the end timestamp.
                 relevant-records (filter #(< (.timestamp %) end-timestamp) consumer-records)]
             
-            (log/info "Got batch of" (.count consumer-records) "of which" (count relevant-records) "in time range")
-            (log/info "Partitions for batch" (.partitions consumer-records))
-
             (doseq [record relevant-records]
+              
+              ; We typically see a couple of million events per days.
+              (swap! count-this-session inc)
+              (when (rem @count-this-session 10000)
+                (log/info "Written" @count-this-session "lines"))
+
               (.write output-stream ^String (.value record))
               (.write output-stream "\n"))
 
@@ -132,11 +137,6 @@
     (doseq [day days]
       (ensure-day day))))
 
-
 (defn -main
-  "I don't do a whole lot ... yet."
   [& args]
   (run-backfill))
-
-
-
