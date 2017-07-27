@@ -9,7 +9,17 @@
             [clj-time.format :as clj-time-format]
             [clj-time.periodic :as clj-time-periodic]
             [robert.bruce :refer [try-try-again]]
-            [clojure.java.io :refer [writer]])
+            [clojure.java.io :refer [writer]]
+
+            [clojurewerkz.quartzite.triggers :as qt]
+            [clojurewerkz.quartzite.jobs :as qj]
+            [clojurewerkz.quartzite.schedule.daily-interval :as daily]
+            [clojurewerkz.quartzite.schedule.calendar-interval :as cal]
+            [clojurewerkz.quartzite.jobs :refer [defjob]]
+            [clojurewerkz.quartzite.scheduler :as qs]
+            [clojurewerkz.quartzite.schedule.cron :as qc]
+
+            )
   (:use [slingshot.slingshot :only [throw+ try+]])
   (:import [org.apache.kafka.clients.consumer KafkaConsumer Consumer ConsumerRecords OffsetAndTimestamp]
            [org.apache.kafka.common TopicPartition PartitionInfo ]
@@ -136,6 +146,30 @@
     (doseq [day days]
       (ensure-day day))))
 
+(defjob daily-schedule-job
+  [ctx]
+  (log/info "Running daily task...")
+  (run-backfill)
+  (log/info "Done daily task."))
+
+(defn run-schedule
+  "Start schedule to generate daily reports. Block."
+  []
+  (log/info "Start scheduler")
+  (let [s (-> (qs/initialize) qs/start)
+        job (qj/build
+              (qj/of-type daily-schedule-job)
+              (qj/with-identity (qj/key "jobs.noop.1")))
+        trigger (qt/build
+                  (qt/with-identity (qt/key "triggers.1"))
+                  (qt/start-now)
+                  (qt/with-schedule (qc/cron-schedule "0 0 1 * * ?")))]
+  (qs/schedule s job trigger)))
+
 (defn -main
   [& args]
-  (run-backfill))
+  (let [command (first args)]
+    (condp = command
+      "run" (run-backfill)
+      "schedule" (run-schedule)
+      (log/error "Unrecognized command"))))

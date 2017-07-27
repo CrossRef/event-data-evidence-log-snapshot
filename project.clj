@@ -13,7 +13,8 @@
                  [org.apache.logging.log4j/log4j-core "2.6.2"]
                  [org.slf4j/slf4j-simple "1.7.21"]
                  [org.apache.kafka/kafka-clients "0.10.2.0"]
-                 [slingshot "0.12.2"]]
+                 [slingshot "0.12.2"]
+                 [clojurewerkz/quartzite "2.0.0"]]
 
   :main ^:skip-aot event-data-evidence-log-snapshot.core
   :target-path "target/%s")

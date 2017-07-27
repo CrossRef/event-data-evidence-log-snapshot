@@ -4,6 +4,20 @@ Snapshots the Evidence Log into archive files.
 
 Runs daily. Ingests the entire Evidence Log Kafka topic and saves each day's worth into a snapshot in S3.
 
+## To run
+
+### Schedule
+
+This will run and block, scheduling daily updates.
+
+    lein run schedule
+
+### One off
+
+This will run the daily task (i.e. fill any missing logs up to last 10 days).
+
+    lein run run
+
 ## Config
 
 The following config keys are required:
