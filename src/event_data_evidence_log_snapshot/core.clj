@@ -112,7 +112,7 @@
 
 (def csv-columns
   "The ordered list of fields that are included in a CSV file."
-  [:t :s :c :f :p :v :e])
+  [:t :s :c :f :p :r :a :v :d :n :u :e :o])
 
 (def csv-column-selector
   "Map a log entry to a CSV line vector."
