@@ -1,4 +1,4 @@
-(defproject event-data-evidence-log-snapshot "0.1.2"
+(defproject event-data-evidence-log-snapshot "0.1.3"
   :description "Event Data Evidence Log Snapshot"
   :url "http://eventdata.crossref.org/"
   :license {:name "MIT License"
@@ -16,6 +16,6 @@
                  [slingshot "0.12.2"]
                  [clojurewerkz/quartzite "2.0.0"]
                  [org.clojure/data.csv "0.1.4"]]
-
+  :jvm-opts ["-Duser.timezone=UTC" "-Xmx4G"]
   :main ^:skip-aot event-data-evidence-log-snapshot.core
   :target-path "target/%s")
