@@ -1,10 +1,10 @@
-(defproject event-data-evidence-log-snapshot "0.1.3"
+(defproject event-data-evidence-log-snapshot "0.1.4"
   :description "Event Data Evidence Log Snapshot"
   :url "http://eventdata.crossref.org/"
   :license {:name "MIT License"
             :url "https://opensource.org/licenses/MIT"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [event-data-common "0.1.30"]
+                 [event-data-common "0.1.41"]
                  [overtone/at-at "1.2.0"]
                  [robert/bruce "0.8.0"]
                  [yogthos/config "0.8"]
