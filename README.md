@@ -1,6 +1,6 @@
 # Event Data Evidence Log Snapshot
 
-Snapshots the Evidence Log and Evidence Record inputs into archive files. Runs daily.
+Snapshots the Evidence Log and Evidence Record inputs into archive files. Runs daily early in the morning, checks a configurable number of days and saves snapshots when they don't exist.
 
 Note that the lines are split along the timestamp recorded by Kafka, which may be very slightly different to the timestamp recorded by the log. If you're interested in precise boundaries, fetch an extra day either side of the range in question.
 
@@ -47,6 +47,7 @@ The following config keys are required:
     STATUS_SNAPSHOT_S3_REGION_NAME
     STATUS_SNAPSHOT_S3_KEY
     STATUS_SNAPSHOT_S3_SECRET
+    STATUS_SNAPSHOT_MAX_DAYS
 
 ## License
 

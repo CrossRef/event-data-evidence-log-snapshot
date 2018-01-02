@@ -105,7 +105,10 @@
 
 (def max-historical-days
   "Catch up this many days when we run."
-  10)
+  ; Sensible default for daily use, we may want a different value for manual use.
+  (if-let [max-days (:status-snapshot-max-days env)]
+    (Integer/parseInt max-days)
+    10))
 
 (def csv-columns
   "The ordered list of fields that are included in a CSV file."
@@ -214,6 +217,7 @@
 
 (defn run-backfill
   []
+  (log/info "Check for" max-historical-days "days")
   (let [yesterday (clj-time/minus (clj-time/now) (clj-time/days 1))
         days (take max-historical-days (clj-time-periodic/periodic-seq yesterday (clj-time/days -1)))]
     (doseq [day days]
