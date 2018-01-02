@@ -17,9 +17,7 @@
             [clojurewerkz.quartzite.schedule.calendar-interval :as cal]
             [clojurewerkz.quartzite.jobs :refer [defjob]]
             [clojurewerkz.quartzite.scheduler :as qs]
-            [clojurewerkz.quartzite.schedule.cron :as qc]
-
-            )
+            [clojurewerkz.quartzite.schedule.cron :as qc])
   (:use [slingshot.slingshot :only [throw+ try+]])
   (:import [org.apache.kafka.clients.consumer KafkaConsumer Consumer ConsumerRecords OffsetAndTimestamp]
            [org.apache.kafka.common TopicPartition PartitionInfo ]
@@ -40,13 +38,12 @@
   It is able to deal with multiple partitions, but iterates one partition at a time. The output file
   would therefore be split into chunks which have correct internal ordering."
 
-  [start-date end-date callback]
+  [start-date end-date topic-name callback]
   (let [start-timestamp (clj-time-coerce/to-long start-date)
         end-timestamp (clj-time-coerce/to-long end-date)
 
         ; Give every process a separate group so it's independent from any other instance or scan.
         group-id (str "live-demo" (System/currentTimeMillis))
-        topic-name (:global-status-topic env)
         consumer (KafkaConsumer. 
                    {"bootstrap.servers" (:global-kafka-bootstrap-servers env)
                     "group.id" group-id
@@ -118,7 +115,7 @@
   "Map a log entry to a CSV line vector."
   (apply juxt csv-columns))
 
-(defn ensure-day
+(defn ensure-day-evidence-logs
   [day-date]
   (let [ymd-string (clj-time-format/unparse date-format day-date)
 
@@ -142,13 +139,14 @@
           (retrieve-date-range
             start-date
             end-date
+            (:global-status-topic env)
             (fn [record]
               (.write w ^String (.value record))
               (.write w "\n"))))
 
-          (log/info "Uploading to" txt-s3-file-path)
+          (log/info "Uploading Evidence Log text file to" txt-s3-file-path)
           (.putObject client bucket-name txt-s3-file-path file)
-          (log/info "Done uploading artifact.")
+          (log/info "Done uploading Evidence Log text file.")
 
           (.delete file)))
 
@@ -164,6 +162,7 @@
           (retrieve-date-range
             start-date
             end-date
+            (:global-status-topic env)
             (fn [record]
               (let [value (.value record)]
                 (when-not (clojure.string/blank? value)
@@ -172,9 +171,44 @@
                     [(csv-column-selector
                        (json/read-str ^String value :key-fn keyword))]))))))
 
-          (log/info "Uploading to" csv-s3-file-path)
+          (log/info "Uploading Evidence Log CSV file to" csv-s3-file-path)
           (.putObject client bucket-name csv-s3-file-path file)
-          (log/info "Done uploading artifact.")
+          (log/info "Done uploading Evidence Log CSV file.")
+
+          (.delete file)))))
+
+
+(defn ensure-day-evidence-records
+  [day-date]
+  (let [ymd-string (clj-time-format/unparse date-format day-date)
+
+        start-date (clj-time/date-time (clj-time/year day-date)
+                                       (clj-time/month day-date)
+                                       (clj-time/day day-date)
+                                       0 0 0 0)
+        end-date (clj-time/plus start-date (clj-time/days 1))
+
+        client (:client @connection)
+        bucket-name (:status-snapshot-s3-bucket-name env)
+        txt-s3-file-path (str "evidence-input/" ymd-string ".txt")]
+
+    (if (.doesObjectExist client bucket-name txt-s3-file-path)
+      (log/info "Text log file exists at " txt-s3-file-path ", skipping.")
+      (let [file (File/createTempFile ymd-string ".txt")]
+        (log/info "Saving log entries for" ymd-string "to temp file")
+
+        (with-open [w (writer file)]
+          (retrieve-date-range
+            start-date
+            end-date
+            (:percolator-input-evidence-record-topic env)
+            (fn [record]
+              (.write w ^String (.value record))
+              (.write w "\n"))))
+
+          (log/info "Uploading Evidence Records text file to" txt-s3-file-path)
+          (.putObject client bucket-name txt-s3-file-path file)
+          (log/info "Done uploading Evidence Records text file.")
 
           (.delete file)))))
 
@@ -183,7 +217,8 @@
   (let [yesterday (clj-time/minus (clj-time/now) (clj-time/days 1))
         days (take max-historical-days (clj-time-periodic/periodic-seq yesterday (clj-time/days -1)))]
     (doseq [day days]
-      (ensure-day day))))
+      (ensure-day-evidence-logs day)
+      (ensure-day-evidence-records day))))
 
 (defjob daily-schedule-job
   [ctx]
