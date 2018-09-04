@@ -21,7 +21,31 @@
   (:use [slingshot.slingshot :only [throw+ try+]])
   (:import [org.apache.kafka.clients.consumer KafkaConsumer Consumer ConsumerRecords OffsetAndTimestamp]
            [org.apache.kafka.common TopicPartition PartitionInfo ]
-           [java.io File]))
+           [java.io File]
+           [com.amazonaws.services.s3.transfer TransferManagerBuilder]))
+
+(def connection
+  (delay
+    (s3/build (:status-snapshot-s3-key env)
+              (:status-snapshot-s3-secret env)
+              (:status-snapshot-s3-region-name env)
+              (:status-snapshot-s3-bucket-name env))))
+
+(def transfer-manager
+  "Transfer manager for S3 multi-part uploads."
+  (delay 
+    (.build
+      (.withS3Client
+        (TransferManagerBuilder/standard)
+        (:client @connection)))))
+
+(defn upload
+  "Multi-part upload. This upload can sometimes be larger than the .putObject"
+  [bucket-name filepath file]
+  (let [upload (.upload @transfer-manager bucket-name filepath file)]
+    (log/info "Uploading" file "to" filepath "...")
+    (.waitForCompletion upload)
+    (log/info "Finished uploading" file "to" filepath "!")))
 
 (defn retrieve-date-range
   "Callback each message for all messages between the two date, one message per callback. Callback
@@ -43,7 +67,7 @@
         end-timestamp (clj-time-coerce/to-long end-date)
 
         ; Give every process a separate group so it's independent from any other instance or scan.
-        group-id (str "live-demo" (System/currentTimeMillis))
+        group-id (str "snapshot" (System/currentTimeMillis))
         consumer (KafkaConsumer. 
                    {"bootstrap.servers" (:global-kafka-bootstrap-servers env)
                     "group.id" group-id
@@ -93,13 +117,6 @@
             (when-not (empty? relevant-records)
               (recur)))))))
 
-(def connection
-  (delay
-    (s3/build (:status-snapshot-s3-key env)
-              (:status-snapshot-s3-secret env)
-              (:status-snapshot-s3-region-name env)
-              (:status-snapshot-s3-bucket-name env))))
-
 (def date-format
   (clj-time-format/formatters :year-month-day))
 
@@ -148,9 +165,8 @@
               (.write w "\n"))))
 
           (log/info "Uploading Evidence Log text file to" txt-s3-file-path)
-          (.putObject client bucket-name txt-s3-file-path file)
+          (upload bucket-name txt-s3-file-path file)
           (log/info "Done uploading Evidence Log text file.")
-
           (.delete file)))
 
     (if (.doesObjectExist client bucket-name csv-s3-file-path)
@@ -175,7 +191,7 @@
                        (json/read-str ^String value :key-fn keyword))]))))))
 
           (log/info "Uploading Evidence Log CSV file to" csv-s3-file-path)
-          (.putObject client bucket-name csv-s3-file-path file)
+          (upload bucket-name csv-s3-file-path file)
           (log/info "Done uploading Evidence Log CSV file.")
 
           (.delete file)))))
@@ -210,7 +226,7 @@
               (.write w "\n"))))
 
           (log/info "Uploading Evidence Records text file to" txt-s3-file-path)
-          (.putObject client bucket-name txt-s3-file-path file)
+          (upload bucket-name txt-s3-file-path file)
           (log/info "Done uploading Evidence Records text file.")
 
           (.delete file)))))
