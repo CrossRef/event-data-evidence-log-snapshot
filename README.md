@@ -1,6 +1,6 @@
 # Event Data Evidence Log Snapshot
 
-Snapshots the Evidence Log and Evidence Record inputs into archive files. Runs daily early in the morning, checks a configurable number of days and saves snapshots when they don't exist.
+Snapshots the Evidence Log and Evidence Record inputs into archive files. Runs hourly and daily schedules. Checks a configurable number of days and saves snapshots when they don't exist. The Evidence Log snapshots are performed every hour in to hourly files. The Evidence Record input archiving is performed every day.
 
 Note that the lines are split along the timestamp recorded by Kafka, which may be very slightly different to the timestamp recorded by the log. If you're interested in precise boundaries, fetch an extra day either side of the range in question.
 
@@ -51,6 +51,6 @@ The following config keys are required:
 
 ## License
 
-Copyright © 2017 Crossref
+Copyright © 2018 Crossref
 
 Distributed under the The MIT License (MIT).

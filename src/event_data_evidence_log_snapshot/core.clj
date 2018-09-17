@@ -117,8 +117,11 @@
             (when-not (empty? relevant-records)
               (recur)))))))
 
-(def date-format
+(def day-date-format
   (clj-time-format/formatters :year-month-day))
+
+(def hour-date-format
+  (clj-time-format/formatters :date-hour))
 
 (def max-historical-days
   "Catch up this many days when we run."
@@ -135,25 +138,28 @@
   "Map a log entry to a CSV line vector."
   (apply juxt csv-columns))
 
-(defn ensure-day-evidence-logs
-  [day-date]
-  (let [ymd-string (clj-time-format/unparse date-format day-date)
+(defn ensure-hour-evidence-logs
+  "Ensure that the Evidence Logs are archived for the given hour."
+  [hour-date]
+  (let [ymdh-string (clj-time-format/unparse hour-date-format hour-date)
 
-        start-date (clj-time/date-time (clj-time/year day-date)
-                                       (clj-time/month day-date)
-                                       (clj-time/day day-date)
-                                       0 0 0 0)
-        end-date (clj-time/plus start-date (clj-time/days 1))
+        ; Trunate to hour.
+        start-date (clj-time/date-time (clj-time/year hour-date)
+                                       (clj-time/month hour-date)
+                                       (clj-time/day hour-date)
+                                       (clj-time/hour hour-date)
+                                       0 0 0)
+        end-date (clj-time/plus start-date (clj-time/hours 1))
 
         client (:client @connection)
         bucket-name (:status-snapshot-s3-bucket-name env)
-        txt-s3-file-path (str "log/" ymd-string ".txt")
-        csv-s3-file-path (str "log/" ymd-string ".csv")]
+        txt-s3-file-path (str "log/" ymdh-string ".txt")
+        csv-s3-file-path (str "log/" ymdh-string ".csv")]
 
     (if (.doesObjectExist client bucket-name txt-s3-file-path)
       (log/info "Text log file exists at " txt-s3-file-path ", skipping.")
-      (let [file (File/createTempFile ymd-string ".txt")]
-        (log/info "Saving log entries for" ymd-string "to temp file")
+      (let [file (File/createTempFile ymdh-string ".txt")]
+        (log/info "Saving log entries for" ymdh-string "to temp file")
 
         (with-open [w (writer file)]
           (retrieve-date-range
@@ -171,8 +177,8 @@
 
     (if (.doesObjectExist client bucket-name csv-s3-file-path)
       (log/info "CSV log file exists at " csv-s3-file-path ", skipping.")
-      (let [file (File/createTempFile ymd-string ".csv")]
-        (log/info "Saving log entries for" ymd-string "to temp file")
+      (let [file (File/createTempFile ymdh-string ".csv")]
+        (log/info "Saving log entries for" ymdh-string "to temp file")
 
         (with-open [w (writer file)]
           ; Write header.
@@ -199,7 +205,7 @@
 
 (defn ensure-day-evidence-records
   [day-date]
-  (let [ymd-string (clj-time-format/unparse date-format day-date)
+  (let [ymd-string (clj-time-format/unparse day-date-format day-date)
 
         start-date (clj-time/date-time (clj-time/year day-date)
                                        (clj-time/month day-date)
@@ -231,19 +237,32 @@
 
           (.delete file)))))
 
-(defn run-backfill
+(defn run-daily-backfill
   []
-  (log/info "Check for" max-historical-days "days")
+  (log/info "Check for" max-historical-days "days of daily tasks.")
   (let [yesterday (clj-time/minus (clj-time/now) (clj-time/days 1))
         days (take max-historical-days (clj-time-periodic/periodic-seq yesterday (clj-time/days -1)))]
     (doseq [day days]
-      (ensure-day-evidence-logs day)
       (ensure-day-evidence-records day))))
+
+(defn run-hourly-backfill
+  []
+  (log/info "Check for" max-historical-days "days of hourly tasks.")
+  (let [yester-hour (clj-time/minus (clj-time/now) (clj-time/hours 1))
+        hours (take (* max-historical-days 24) (clj-time-periodic/periodic-seq yester-hour (clj-time/hours -1)))]
+    (doseq [hour hours]
+      (ensure-hour-evidence-logs hour))))
+
+(defjob hourly-schedule-job
+  [ctx]
+  (log/info "Running hourly task...")
+  (run-hourly-backfill)
+  (log/info "Done hourly task."))
 
 (defjob daily-schedule-job
   [ctx]
   (log/info "Running daily task...")
-  (run-backfill)
+  (run-daily-backfill)
   (log/info "Done daily task."))
 
 (defn run-schedule
@@ -251,19 +270,31 @@
   []
   (log/info "Start scheduler")
   (let [s (-> (qs/initialize) qs/start)
-        job (qj/build
-              (qj/of-type daily-schedule-job)
-              (qj/with-identity (qj/key "jobs.noop.1")))
-        trigger (qt/build
-                  (qt/with-identity (qt/key "triggers.1"))
-                  (qt/start-now)
-                  (qt/with-schedule (qc/cron-schedule "0 0 1 * * ?")))]
-  (qs/schedule s job trigger)))
+        daily-job (qj/build
+                    (qj/of-type daily-schedule-job)
+                    (qj/with-identity (qj/key "jobs.daily")))
+        daily-trigger (qt/build
+                        (qt/with-identity (qt/key "triggers.daily"))
+                        (qt/start-now)
+                        (qt/with-schedule
+                          (qc/cron-schedule "0 0 1 * * ?")))
+
+        hourly-job (qj/build
+                    (qj/of-type daily-schedule-job)
+                    (qj/with-identity (qj/key "jobs.hourly")))
+        hourly-trigger (qt/build
+                        (qt/with-identity (qt/key "triggers.hourly"))
+                        (qt/start-now)
+                        (qt/with-schedule
+                          (qc/cron-schedule "0 30 * * * ?")))]
+    (qs/schedule s daily-job daily-trigger)
+    (qs/schedule s hourly-job hourly-trigger)))
 
 (defn -main
   [& args]
   (let [command (first args)]
     (condp = command
-      "run" (run-backfill)
+      "run" (do (run-daily-backfill)
+                (run-hourly-backfill))
       "schedule" (run-schedule)
       (log/error "Unrecognized command"))))
