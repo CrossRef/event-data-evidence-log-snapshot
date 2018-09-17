@@ -286,7 +286,7 @@
                         (qt/with-identity (qt/key "triggers.hourly"))
                         (qt/start-now)
                         (qt/with-schedule
-                          (qc/cron-schedule "0 30 * * * ?")))]
+                          (qc/cron-schedule "0 30 * * * *")))]
     (qs/schedule s daily-job daily-trigger)
     (qs/schedule s hourly-job hourly-trigger)))
 
