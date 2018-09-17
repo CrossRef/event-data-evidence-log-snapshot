@@ -270,6 +270,8 @@
   []
   (log/info "Start scheduler")
   (let [s (-> (qs/initialize) qs/start)
+
+        ; Daily job done at one hour past midnight everyday.
         daily-job (qj/build
                     (qj/of-type daily-schedule-job)
                     (qj/with-identity (qj/key "jobs.daily")))
@@ -279,14 +281,15 @@
                         (qt/with-schedule
                           (qc/cron-schedule "0 0 1 * * ?")))
 
+        ; Hourly job done at 30 minutes past the hour, every hour.
         hourly-job (qj/build
-                    (qj/of-type daily-schedule-job)
+                    (qj/of-type hourly-schedule-job)
                     (qj/with-identity (qj/key "jobs.hourly")))
         hourly-trigger (qt/build
                         (qt/with-identity (qt/key "triggers.hourly"))
                         (qt/start-now)
                         (qt/with-schedule
-                          (qc/cron-schedule "0 30 * * * *")))]
+                          (qc/cron-schedule "0 30 * * * ?")))]
     (qs/schedule s daily-job daily-trigger)
     (qs/schedule s hourly-job hourly-trigger)))
 
