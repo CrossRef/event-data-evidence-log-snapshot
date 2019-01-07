@@ -243,7 +243,8 @@
 (defjob daily-schedule-job
   [ctx]
   (log/info "Running daily task...")
-  (run-backfill)
+  ; Keep retrying in the face of any connection issues.
+  (try-try-again {:sleep 60000 :tries 10} run-backfill)
   (log/info "Done daily task."))
 
 (defn run-schedule
