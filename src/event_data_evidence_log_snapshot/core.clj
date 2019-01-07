@@ -256,13 +256,13 @@
 (defjob hourly-schedule-job
   [ctx]
   (log/info "Running hourly task...")
-  (run-hourly-backfill)
+  (try-try-again {:sleep 60000 :tries 10} run-hourly-backfill)
   (log/info "Done hourly task."))
 
 (defjob daily-schedule-job
   [ctx]
   (log/info "Running daily task...")
-  (run-daily-backfill)
+  (try-try-again {:sleep 60000 :tries 10} run-daily-backfill)
   (log/info "Done daily task."))
 
 (defn run-schedule

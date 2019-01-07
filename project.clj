@@ -1,5 +1,5 @@
 
-(defproject event-data-evidence-log-snapshot "0.1.10"
+(defproject event-data-evidence-log-snapshot "0.1.11"
   :description "Event Data Evidence Log Snapshot"
   :url "http://eventdata.crossref.org/"
   :license {:name "MIT License"
